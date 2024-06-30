@@ -5,6 +5,8 @@ import math
 import numpy as np
 import random
 import csv
+import json
+
 import tensorflow as tf
 from tensorflow.keras import layers
 
@@ -166,45 +168,33 @@ def draw_sensors(front_sensor, left_sensor, right_sensor):
     pygame.draw.rect(WIN, front_color, (WIDTH - 60 - 10, HEIGHT - front_height - 10, sensor_width, front_height))
     pygame.draw.rect(WIN, right_color, (WIDTH - 30 - 10, HEIGHT - right_height - 10, sensor_width, right_height))
 
-# Funkcja zapisująca dane uczące do pliku
-def save_data(path_data):
-    znacznik_czasu = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    # Nazwa pliku z dołączonym znacznikiem czasu
-    nazwa_pliku = f"data_{znacznik_czasu}.csv"
-    # Nazwa folderu
-    nazwa_folderu = "data"
+# Funkcja zapisująca ścieżkę do pliku JSON
+def save_path_to_file(path_data, filename="path_data.json"):
+    serializable_path_data = []
+    for state, action, reward, next_state, done in path_data:
+        serializable_path_data.append((state.tolist(), action, reward, next_state.tolist(), done))
+    with open(filename, 'w') as file:
+        json.dump(serializable_path_data, file)
 
-    # Sprawdzenie, czy folder istnieje
-    if not os.path.exists(nazwa_folderu):
-        # Utworzenie folderu, jeśli nie istnieje
-        os.makedirs(nazwa_folderu)
-    # Pełna ścieżka do pliku
-    sciezka_pliku = os.path.join(nazwa_folderu, nazwa_pliku)
-    # Otwarcie pliku w trybie zapisu
-    with open(sciezka_pliku, 'w') as f:
-        # Utworzenie obiektu typu writer
-        writer = csv.writer(f)
-        # Zapisanie nagłówków kolumn
-        writer.writerow(['next_state', 'reward', 'next_state', 'done'])
-        # Zapisanie wierszy danych
-        for row in path_data:
-            writer.writerow(row)
-
-# Funkcja czytająca dane uczące z pliku
-def read_data():
-    # Ścieżka do folderu
-    sciezka_folderu = "data"
-
-    # Pętla po plikach w folderze
-    for plik in os.listdir(sciezka_folderu):
-    # Otwarcie pliku w trybie odczytu
-        with open(os.path.join(sciezka_folderu, plik), 'r') as f:
-            # Odczytanie zawartości pliku
-            zawartosc = f.read()
-            # Do przetwarzania zawartości pliku...
-            print(f"Zawartość pliku {plik}:")
-            return zawartosc
-            break #czytam tylko jeden plik
+# Funkcja odczytująca ścieżkę z pliku JSON
+def load_path_from_file(filename="path_data.json"):
+    try:
+        with open(filename, 'r') as file:
+            path_data = json.load(file)
+            for i, data in enumerate(path_data):
+                state, action, reward, next_state, done = data
+                path_data[i] = (np.array(state, dtype=np.float32),
+                                int(action),
+                                float(reward),
+                                np.array(next_state, dtype=np.float32),
+                                bool(done))
+            return path_data
+    except FileNotFoundError:
+        print(f"File {filename} not found.")
+        return None
+    except Exception as e:
+        print(f"An error occurred while loading the file: {e}")
+        return None
 
 # Model Q-network
 def create_q_model():
@@ -218,21 +208,22 @@ def create_q_model():
     return model
 
 # Funkcja do trenowania modelu DQN na podstawie zapisanych danych
-def train_dqn_from_path(path_data):
+def train_dqn_from_path():
+    global EPSILON
+    path_data = load_path_from_file()
 
     model = create_q_model()
     target_model = create_q_model()
     target_model.set_weights(model.get_weights())
 
-    memory = path_data
-    global EPSILON
+    memory = []
+    for data in path_data:
+        memory.append(data)
+        if len(memory) > MEMORY_SIZE:
+            memory.pop(0)
 
-    for episode in range(1000):
-        if episode % 10 == 0:
-            target_model.set_weights(model.get_weights())
-            print(f'Episode {episode}')
-
-        if len(memory) >= BATCH_SIZE:
+    if len(memory) >= BATCH_SIZE:
+        for episode in range(1000):
             batch = random.sample(memory, BATCH_SIZE)
             states, actions, rewards, next_states, dones = zip(*batch)
 
@@ -246,7 +237,27 @@ def train_dqn_from_path(path_data):
 
             model.train_on_batch(states, targets)
 
+            if EPSILON > MIN_EPSILON:
+                EPSILON *= EPSILON_DECAY
+
+            if episode % 10 == 0:
+                target_model.set_weights(model.get_weights())
+                print(f'Episode {episode}, EPSILON: {EPSILON}')
+
     model.save('my_model.keras')
+
+# Funkcja ruchu robota
+def move_robot_tf(x, y, angle, action):
+
+    if action == 0:  # Lewo
+        angle -= TURN_RATE
+    elif action == 1:  # Prosto
+        x += SPEED * math.cos(math.radians(angle))
+        y -= SPEED * math.sin(math.radians(angle))
+    elif action == 2:  # Prawo
+        angle += TURN_RATE
+    
+    return x, y, angle
 
 def main():
 
@@ -258,7 +269,7 @@ def main():
         PozycjaMenu(5, "Start/Stop robot - Pause", False),
         PozycjaMenu(6, "Zapisanych danych do trenowania modelu", False),
         PozycjaMenu(7, "Robot u celu", False),
-        PozycjaMenu(8, "etap 1 - przygotowanie danych", True),
+        PozycjaMenu(8, "etap 1 - przygotowanie danych", False),
         PozycjaMenu(9, "etap 2 - uczenie", False),
         PozycjaMenu(10,"etap 3 - testy", False)
     ]
@@ -275,6 +286,8 @@ def main():
     # Zmienne do zapisywania ścieżki
     path_data = []
     dist = screen_width()
+
+    model = None
 
     while run:
         clock.tick(30)
@@ -314,28 +327,33 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_2:
                     if menu[5].status:
-                        save_data(path_data)
+                        save_path_to_file(path_data)
                         print(f"dane zapisane")
                         # etap 1 zakończony
-                        pozycja_menu = menu[8]
+                        pozycja_menu = menu[7]
                         pozycja_menu.zmien_status()
                         # etap 2 zaczynamy
-                        pozycja_menu = menu[9]
+                        pozycja_menu = menu[8]
                         pozycja_menu.zmien_status()
-                        read_data()
+                        #read_data()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_3 and ready:
-                    #if not menu[4].status: 
-                        # Zmiana statusu wybranej pozycji menu
+                    pozycja_menu = menu[2]
+                    pozycja_menu.zmien_status()
+                    print(f"{pozycja_menu.nazwa}")
+                    train_dqn_from_path()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_4 and ready:
                     pozycja_menu = menu[3]
                     pozycja_menu.zmien_status()
                     print(f"{pozycja_menu.nazwa}")
-                    data = read_data()
-                    train_dqn_from_path(data)
+                    # Ładowanie wytrenowanego modelu
+                    model = tf.keras.models.load_model('my_model.keras')
+
 
 
         # etap 1
-        if not menu[8].status:
+        if not menu[7].status:
             # go if not paused and press 1:
             if menu[1].status and not menu[4].status and not menu[6].status: 
                 dist = math.sqrt((x - end_pos[0]) ** 2 + (y - end_pos[1]) ** 2)
@@ -393,18 +411,29 @@ def main():
         
         # etap 2
         if menu[8].status:
-            if menu[3].status:
+            if menu[2].status:
                 text2 = font.render(f'[3] : krok 4: Trenowanie modelu DQN', True, hex_to_rgb("#00ff00"))
                 WIN.blit(text2, (15, 45))
             else:
                 text2 = font.render(f'[3] : krok 4: Trenowanie modelu DQN', True, hex_to_rgb("#ff0000"))
                 WIN.blit(text2, (15, 45))
-
-            pass
+        # etap 3       
+            if menu[3].status:
+                text2 = font.render(f'[4] : krok 5: Użycie nauczonego modelu do nawigacji robota', True, hex_to_rgb("#00ff00"))
+                WIN.blit(text2, (15, 75))
+            else:
+                text2 = font.render(f'[4] : krok 5: Użycie nauczonego modelu do nawigacji robota', True, hex_to_rgb("#ff0000"))
+                WIN.blit(text2, (15, 75))
 
 
         esc_text = font.render(f'Exit, press esc', True, hex_to_rgb("#F6CD44"))
         WIN.blit(esc_text, (15, 15))
+
+
+        if menu[8].status and menu[3].status:
+            action = np.argmax(model.predict(state[np.newaxis]))
+            # Wykonanie ruchu
+            x, y, angle = move_robot_tf(x, y, angle, action)
 
 
         draw_sensors(front_sensor, left_sensor, right_sensor)
