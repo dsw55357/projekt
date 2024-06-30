@@ -2,6 +2,7 @@ import pygame
 import math
 import numpy as np
 import random
+import csv
 import tensorflow as tf
 from tensorflow.keras import layers
 
@@ -152,6 +153,17 @@ def draw_sensors(front_sensor, left_sensor, right_sensor):
     pygame.draw.rect(WIN, front_color, (WIDTH - 60 - 10, HEIGHT - front_height - 10, sensor_width, front_height))
     pygame.draw.rect(WIN, right_color, (WIDTH - 30 - 10, HEIGHT - right_height - 10, sensor_width, right_height))
 
+# Funkcja zapisująca dane uczące do pliku
+def save_data(path_data):
+    # Otwarcie pliku w trybie zapisu
+    with open('data.csv', 'w') as f:
+        # Utworzenie obiektu typu writer
+        writer = csv.writer(f)
+        # Zapisanie nagłówków kolumn
+        writer.writerow(['next_state', 'reward', 'next_state', 'done'])
+        # Zapisanie wierszy danych
+        for row in path_data:
+            writer.writerow(row)
 
 def main():
 
@@ -213,6 +225,11 @@ def main():
                         pozycja_menu = menu[1]
                         pozycja_menu.zmien_status()
                         print(f"{pozycja_menu.nazwa}")
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_2:
+                    if menu[5].status:
+                        save_data(path_data)
+                        print(f"dane zapisane")   
 
         # go if not paused and press 1:
         if menu[1].status and not menu[4].status and not menu[6].status: 
@@ -246,6 +263,7 @@ def main():
             pozycja_menu.zmien_status()
             print(f"{pozycja_menu.nazwa}")
 
+
         # Robot u celu
         if menu[6].status:
             text1 = font.render(f'Robot u celu!', True, hex_to_rgb("#F9EBC7"))
@@ -264,13 +282,13 @@ def main():
             WIN.blit(text2, (15, 45))
 
         if menu[1].status and not menu[4].status:
-            text2 = font.render(f'[1] : krok 2: Przejazdu przez labirynt - generowanie danych uczących', True, hex_to_rgb("#00ff00"))
+            text2 = font.render(f'[1] : krok 2: Przejazd przez labirynt - generowanie danych uczących', True, hex_to_rgb("#00ff00"))
             WIN.blit(text2, (15, 75))
         elif menu[1].status and menu[4].status: # pressed 1 and paused
-            text2 = font.render(f'[1] : krok 2: Przejazdu przez labirynt - generowanie danych uczących [Paused!]', True, hex_to_rgb("#ff0000"))
+            text2 = font.render(f'[1] : krok 2: Przejazd przez labirynt - generowanie danych uczących [Paused!]', True, hex_to_rgb("#ff0000"))
             WIN.blit(text2, (15, 75))
         else:
-            text2 = font.render(f'[1] : krok 2: Przejazdu przez labirynt - generowanie danych uczących', True, hex_to_rgb("#ff0000"))
+            text2 = font.render(f'[1] : krok 2: Przejazd przez labirynt - generowanie danych uczących', True, hex_to_rgb("#ff0000"))
             WIN.blit(text2, (15, 75))
 
         if menu[5].status:
