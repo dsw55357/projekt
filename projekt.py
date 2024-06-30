@@ -8,6 +8,16 @@ import csv
 import tensorflow as tf
 from tensorflow.keras import layers
 
+# Parametry DQN
+GAMMA = 0.99  # Współczynnik dyskontowania
+EPSILON = 1.0  # Współczynnik eksploracji
+EPSILON_DECAY = 0.995
+MIN_EPSILON = 0.1
+BATCH_SIZE = 64
+LEARNING_RATE = 0.001
+MEMORY_SIZE = 10000
+
+
 class PozycjaMenu:
     def __init__(self, id, nazwa, status=True):
         self.id = id
@@ -193,9 +203,50 @@ def read_data():
             zawartosc = f.read()
             # Do przetwarzania zawartości pliku...
             print(f"Zawartość pliku {plik}:")
-            print(zawartosc)
+            return zawartosc
+            break #czytam tylko jeden plik
 
-    pass
+# Model Q-network
+def create_q_model():
+    model = tf.keras.Sequential([
+        layers.Input(shape=(3,)),
+        layers.Dense(24, activation='relu'),
+        layers.Dense(24, activation='relu'),
+        layers.Dense(3, activation='linear')
+    ])
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss='mse')
+    return model
+
+# Funkcja do trenowania modelu DQN na podstawie zapisanych danych
+def train_dqn_from_path(path_data):
+
+    model = create_q_model()
+    target_model = create_q_model()
+    target_model.set_weights(model.get_weights())
+
+    memory = path_data
+    global EPSILON
+
+    for episode in range(1000):
+        if episode % 10 == 0:
+            target_model.set_weights(model.get_weights())
+            print(f'Episode {episode}')
+
+        if len(memory) >= BATCH_SIZE:
+            batch = random.sample(memory, BATCH_SIZE)
+            states, actions, rewards, next_states, dones = zip(*batch)
+
+            states = np.array(states)
+            next_states = np.array(next_states)
+            targets = model.predict(states)
+            next_q_values = target_model.predict(next_states)
+
+            for i in range(BATCH_SIZE):
+                targets[i][actions[i]] = rewards[i] + GAMMA * np.max(next_q_values[i]) * (1 - dones[i])
+
+            model.train_on_batch(states, targets)
+
+    model.save('my_model.keras')
 
 def main():
 
@@ -207,7 +258,7 @@ def main():
         PozycjaMenu(5, "Start/Stop robot - Pause", False),
         PozycjaMenu(6, "Zapisanych danych do trenowania modelu", False),
         PozycjaMenu(7, "Robot u celu", False),
-        PozycjaMenu(8, "etap 1 - przygotowanie danych", False),
+        PozycjaMenu(8, "etap 1 - przygotowanie danych", True),
         PozycjaMenu(9, "etap 2 - uczenie", False),
         PozycjaMenu(10,"etap 3 - testy", False)
     ]
@@ -263,22 +314,98 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_2:
                     if menu[5].status:
-                        # Utworzenie znacznika czasu
                         save_data(path_data)
-                        print(f"dane zapisane")   
+                        print(f"dane zapisane")
+                        # etap 1 zakończony
+                        pozycja_menu = menu[8]
+                        pozycja_menu.zmien_status()
+                        # etap 2 zaczynamy
+                        pozycja_menu = menu[9]
+                        pozycja_menu.zmien_status()
                         read_data()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_3 and ready:
+                    #if not menu[4].status: 
+                        # Zmiana statusu wybranej pozycji menu
+                    pozycja_menu = menu[3]
+                    pozycja_menu.zmien_status()
+                    print(f"{pozycja_menu.nazwa}")
+                    data = read_data()
+                    train_dqn_from_path(data)
 
-        # go if not paused and press 1:
-        if menu[1].status and not menu[4].status and not menu[6].status: 
-            dist = math.sqrt((x - end_pos[0]) ** 2 + (y - end_pos[1]) ** 2)
-            state = get_state(x, y, angle)
-            next_x, next_y, next_angle, front_sensor, left_sensor, right_sensor = move_robot(x, y, angle)
-            next_state = get_state(next_x, next_y, next_angle)
-            reward = 1  # Nagroda 
-            done = (dist < 20)
-            path_data.append((next_state, 1, reward, next_state, done)) 
-            x, y, angle = next_x, next_y, next_angle
-            pass      
+
+        # etap 1
+        if not menu[8].status:
+            # go if not paused and press 1:
+            if menu[1].status and not menu[4].status and not menu[6].status: 
+                dist = math.sqrt((x - end_pos[0]) ** 2 + (y - end_pos[1]) ** 2)
+                state = get_state(x, y, angle)
+                next_x, next_y, next_angle, front_sensor, left_sensor, right_sensor = move_robot(x, y, angle)
+                next_state = get_state(next_x, next_y, next_angle)
+                reward = 1  # Nagroda 
+                done = (dist < 20)
+                path_data.append((next_state, 1, reward, next_state, done)) 
+                x, y, angle = next_x, next_y, next_angle
+                pass      
+
+            if dist < 20 and not menu[6].status:
+                # przerywamy generowanie danych
+                pozycja_menu = menu[6]
+                pozycja_menu.zmien_status()
+                print(f"{pozycja_menu.nazwa}")
+
+                # i można je zapisać
+                pozycja_menu = menu[5]
+                pozycja_menu.zmien_status()
+                print(f"{pozycja_menu.nazwa}")
+
+            #if 
+            # Robot u celu
+            if menu[6].status:
+                text1 = font.render(f'Robot u celu!', True, hex_to_rgb("#F9EBC7"))
+                WIN.blit(text1, (screen_width() - text1.get_rect().width - 15, 15))
+                text1 = font.render(f'Dane gotowe do zapisania!', True, hex_to_rgb("#F9EBC7"))
+                WIN.blit(text1, (screen_width() - text1.get_rect().width -15, 45))   
+            
+            if menu[0].status:
+                text2 = font.render(f'[LMB] : krok 1: Pozycja robota określona', True, hex_to_rgb("#00ff00"))
+                WIN.blit(text2, (15, 45))
+            else:
+                text2 = font.render(f'[LMB] : krok 1: Określ pozycję robota', True, hex_to_rgb("#ff0000"))
+                WIN.blit(text2, (15, 45))
+
+            if menu[1].status and not menu[4].status:
+                text2 = font.render(f'[1] : krok 2: Przejazd przez labirynt - generowanie danych uczących', True, hex_to_rgb("#00ff00"))
+                WIN.blit(text2, (15, 75))
+            elif menu[1].status and menu[4].status: # pressed 1 and paused
+                text2 = font.render(f'[1] : krok 2: Przejazd przez labirynt - generowanie danych uczących [Paused!]', True, hex_to_rgb("#ff0000"))
+                WIN.blit(text2, (15, 75))
+            else:
+                text2 = font.render(f'[1] : krok 2: Przejazd przez labirynt - generowanie danych uczących', True, hex_to_rgb("#ff0000"))
+                WIN.blit(text2, (15, 75))
+
+            if menu[5].status:
+                text2 = font.render(f'[2] : krok 3: Zapisywanie trasy', True, hex_to_rgb("#00ff00"))
+                WIN.blit(text2, (15, 105))
+            else:
+                text2 = font.render(f'[2] : krok 3: Zapisywanie trasy', True, hex_to_rgb("#ff0000"))
+                WIN.blit(text2, (15, 105))
+        
+        # etap 2
+        if menu[8].status:
+            if menu[3].status:
+                text2 = font.render(f'[3] : krok 4: Trenowanie modelu DQN', True, hex_to_rgb("#00ff00"))
+                WIN.blit(text2, (15, 45))
+            else:
+                text2 = font.render(f'[3] : krok 4: Trenowanie modelu DQN', True, hex_to_rgb("#ff0000"))
+                WIN.blit(text2, (15, 45))
+
+            pass
+
+
+        esc_text = font.render(f'Exit, press esc', True, hex_to_rgb("#F6CD44"))
+        WIN.blit(esc_text, (15, 15))
+
 
         draw_sensors(front_sensor, left_sensor, right_sensor)
 
@@ -288,53 +415,6 @@ def main():
         # Target
         pygame.draw.circle(WIN, (0,255,204), (end_pos[0], end_pos[1]), ROBOT_RADIUS-4)
 
-
-        if dist < 20 and not menu[6].status:
-            # przerywamy generowanie danych
-            pozycja_menu = menu[6]
-            pozycja_menu.zmien_status()
-            print(f"{pozycja_menu.nazwa}")
-
-            # można je zapisać
-            pozycja_menu = menu[5]
-            pozycja_menu.zmien_status()
-            print(f"{pozycja_menu.nazwa}")
-
-        # Robot u celu
-        if menu[6].status:
-            text1 = font.render(f'Robot u celu!', True, hex_to_rgb("#F9EBC7"))
-            WIN.blit(text1, (screen_width() - text1.get_rect().width - 15, 15))
-            text1 = font.render(f'Dane gotowe do zapisania!', True, hex_to_rgb("#F9EBC7"))
-            WIN.blit(text1, (screen_width() - text1.get_rect().width -15, 45))   
-        
-        if menu[0].status:
-            text2 = font.render(f'[LMB] : krok 1: Pozycja robota określona', True, hex_to_rgb("#00ff00"))
-            WIN.blit(text2, (15, 45))
-        else:
-            text2 = font.render(f'[LMB] : krok 1: Określ pozycję robota', True, hex_to_rgb("#ff0000"))
-            WIN.blit(text2, (15, 45))
-
-        if menu[1].status and not menu[4].status:
-            text2 = font.render(f'[1] : krok 2: Przejazd przez labirynt - generowanie danych uczących', True, hex_to_rgb("#00ff00"))
-            WIN.blit(text2, (15, 75))
-        elif menu[1].status and menu[4].status: # pressed 1 and paused
-            text2 = font.render(f'[1] : krok 2: Przejazd przez labirynt - generowanie danych uczących [Paused!]', True, hex_to_rgb("#ff0000"))
-            WIN.blit(text2, (15, 75))
-        else:
-            text2 = font.render(f'[1] : krok 2: Przejazd przez labirynt - generowanie danych uczących', True, hex_to_rgb("#ff0000"))
-            WIN.blit(text2, (15, 75))
-
-        if menu[5].status:
-            text2 = font.render(f'[2] : krok 3: Zapisywanie trasy', True, hex_to_rgb("#00ff00"))
-            WIN.blit(text2, (15, 105))
-        else:
-            text2 = font.render(f'[2] : krok 3: Zapisywanie trasy', True, hex_to_rgb("#ff0000"))
-            WIN.blit(text2, (15, 105))
-
-
-
-        esc_text = font.render(f'Exit, press esc', True, hex_to_rgb("#F6CD44"))
-        WIN.blit(esc_text, (15, 15))
 
         pygame.display.update()     
 
