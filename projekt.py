@@ -215,7 +215,7 @@ def main():
                         print(f"{pozycja_menu.nazwa}")
 
         # go if not paused and press 1:
-        if menu[1].status and not menu[4].status: 
+        if menu[1].status and not menu[4].status and not menu[6].status: 
             dist = math.sqrt((x - end_pos[0]) ** 2 + (y - end_pos[1]) ** 2)
             state = get_state(x, y, angle)
             next_x, next_y, next_angle, front_sensor, left_sensor, right_sensor = move_robot(x, y, angle)
@@ -226,19 +226,6 @@ def main():
             x, y, angle = next_x, next_y, next_angle
             pass      
 
-        if dist < 20 and not menu[6].status:
-            text1 = font.render(f'Robot u celu!', True, hex_to_rgb("#F9EBC7"))
-            WIN.blit(text1, (screen_width() - text1.get_rect().width - 15, 15))
-            text1 = font.render(f'Dane gotowe do zapisania!', True, hex_to_rgb("#F9EBC7"))
-            WIN.blit(text1, (screen_width() - text1.get_rect().width -15, 45))
-
-            # przerywamy generowanie danych
-            pozycja_menu = menu[]
-            pozycja_menu.zmien_status()
-            print(f"{pozycja_menu.nazwa}")
-
-            pass
-
         draw_sensors(front_sensor, left_sensor, right_sensor)
 
         if ready:
@@ -246,6 +233,25 @@ def main():
 
         # Target
         pygame.draw.circle(WIN, (0,255,204), (end_pos[0], end_pos[1]), ROBOT_RADIUS-4)
+
+
+        if dist < 20 and not menu[6].status:
+            # przerywamy generowanie danych
+            pozycja_menu = menu[6]
+            pozycja_menu.zmien_status()
+            print(f"{pozycja_menu.nazwa}")
+
+            # można je zapisać
+            pozycja_menu = menu[5]
+            pozycja_menu.zmien_status()
+            print(f"{pozycja_menu.nazwa}")
+
+        # Robot u celu
+        if menu[6].status:
+            text1 = font.render(f'Robot u celu!', True, hex_to_rgb("#F9EBC7"))
+            WIN.blit(text1, (screen_width() - text1.get_rect().width - 15, 15))
+            text1 = font.render(f'Dane gotowe do zapisania!', True, hex_to_rgb("#F9EBC7"))
+            WIN.blit(text1, (screen_width() - text1.get_rect().width -15, 45))   
 
         esc_text = font.render(f'Exit, press esc', True, hex_to_rgb("#F6CD44"))
         WIN.blit(esc_text, (15, 15))
@@ -258,13 +264,13 @@ def main():
             WIN.blit(text2, (15, 45))
 
         if menu[1].status and not menu[4].status:
-            text2 = font.render(f'[1] : krok 2: Przejazdu przez labirynt - generowanie danych uczacych', True, hex_to_rgb("#00ff00"))
+            text2 = font.render(f'[1] : krok 2: Przejazdu przez labirynt - generowanie danych uczących', True, hex_to_rgb("#00ff00"))
             WIN.blit(text2, (15, 75))
         elif menu[1].status and menu[4].status: # pressed 1 and paused
-            text2 = font.render(f'[1] : krok 2: Przejazdu przez labirynt - generowanie danych uczacych [Paused!]', True, hex_to_rgb("#ff0000"))
+            text2 = font.render(f'[1] : krok 2: Przejazdu przez labirynt - generowanie danych uczących [Paused!]', True, hex_to_rgb("#ff0000"))
             WIN.blit(text2, (15, 75))
         else:
-            text2 = font.render(f'[1] : krok 2: Przejazdu przez labirynt - generowanie danych uczacych', True, hex_to_rgb("#ff0000"))
+            text2 = font.render(f'[1] : krok 2: Przejazdu przez labirynt - generowanie danych uczących', True, hex_to_rgb("#ff0000"))
             WIN.blit(text2, (15, 75))
 
         if menu[5].status:
