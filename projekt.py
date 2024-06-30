@@ -1,4 +1,6 @@
 import pygame
+import os
+import datetime
 import math
 import numpy as np
 import random
@@ -7,7 +9,8 @@ import tensorflow as tf
 from tensorflow.keras import layers
 
 class PozycjaMenu:
-    def __init__(self, nazwa, status=True):
+    def __init__(self, id, nazwa, status=True):
+        self.id = id
         self.nazwa = nazwa
         self.status = status
     
@@ -155,8 +158,20 @@ def draw_sensors(front_sensor, left_sensor, right_sensor):
 
 # Funkcja zapisująca dane uczące do pliku
 def save_data(path_data):
+    znacznik_czasu = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Nazwa pliku z dołączonym znacznikiem czasu
+    nazwa_pliku = f"data_{znacznik_czasu}.csv"
+    # Nazwa folderu
+    nazwa_folderu = "data"
+
+    # Sprawdzenie, czy folder istnieje
+    if not os.path.exists(nazwa_folderu):
+        # Utworzenie folderu, jeśli nie istnieje
+        os.makedirs(nazwa_folderu)
+    # Pełna ścieżka do pliku
+    sciezka_pliku = os.path.join(nazwa_folderu, nazwa_pliku)
     # Otwarcie pliku w trybie zapisu
-    with open('data.csv', 'w') as f:
+    with open(sciezka_pliku, 'w') as f:
         # Utworzenie obiektu typu writer
         writer = csv.writer(f)
         # Zapisanie nagłówków kolumn
@@ -165,23 +180,42 @@ def save_data(path_data):
         for row in path_data:
             writer.writerow(row)
 
+# Funkcja czytająca dane uczące z pliku
+def read_data():
+    # Ścieżka do folderu
+    sciezka_folderu = "data"
+
+    # Pętla po plikach w folderze
+    for plik in os.listdir(sciezka_folderu):
+    # Otwarcie pliku w trybie odczytu
+        with open(os.path.join(sciezka_folderu, plik), 'r') as f:
+            # Odczytanie zawartości pliku
+            zawartosc = f.read()
+            # Do przetwarzania zawartości pliku...
+            print(f"Zawartość pliku {plik}:")
+            print(zawartosc)
+
+    pass
+
 def main():
 
     menu = [
-        PozycjaMenu("Pozycja robota", False),
-        PozycjaMenu("Wygenerowanie ścieżki", False),
-        PozycjaMenu("Trenowanie modelu", False),
-        PozycjaMenu("Użycie nauczonego modelu", False),
-        PozycjaMenu("Start/Stop robot - Pause", False),
-        PozycjaMenu("Zapisanych danych do trenowania modelu", False),
-        PozycjaMenu("Robot u celu", False)
+        PozycjaMenu(0, "Pozycja robota", False),
+        PozycjaMenu(1, "Wygenerowanie ścieżki", False),
+        PozycjaMenu(3, "Trenowanie modelu", False),
+        PozycjaMenu(4, "Użycie nauczonego modelu", False),
+        PozycjaMenu(5, "Start/Stop robot - Pause", False),
+        PozycjaMenu(6, "Zapisanych danych do trenowania modelu", False),
+        PozycjaMenu(7, "Robot u celu", False),
+        PozycjaMenu(8, "etap 1 - przygotowanie danych", False),
+        PozycjaMenu(9, "etap 2 - uczenie", False),
+        PozycjaMenu(10,"etap 3 - testy", False)
     ]
 
     font = pygame.font.Font(None, 36)
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 36)
 
-    #paused = False  # Flaga oznaczająca, czy symulacja jest zatrzymana
     run = True
     ready = False
 
@@ -207,6 +241,7 @@ def main():
                 if event.key == pygame.K_SPACE:
                     if ready:
                         #paused = not paused  # Zmiana stanu pauzy po wciśnięciu klawisza SPACJA
+                        # Flaga oznaczająca, czy symulacja jest zatrzymana
                         pozycja_menu = menu[4]
                         pozycja_menu.zmien_status()
                         print(f"{pozycja_menu.nazwa}")                       
@@ -228,8 +263,10 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_2:
                     if menu[5].status:
+                        # Utworzenie znacznika czasu
                         save_data(path_data)
                         print(f"dane zapisane")   
+                        read_data()
 
         # go if not paused and press 1:
         if menu[1].status and not menu[4].status and not menu[6].status: 
@@ -239,7 +276,7 @@ def main():
             next_state = get_state(next_x, next_y, next_angle)
             reward = 1  # Nagroda 
             done = (dist < 20)
-            path_data.append((next_state, 1, reward, next_state, done))  # action = 1 to ruch do przodu
+            path_data.append((next_state, 1, reward, next_state, done)) 
             x, y, angle = next_x, next_y, next_angle
             pass      
 
@@ -263,16 +300,12 @@ def main():
             pozycja_menu.zmien_status()
             print(f"{pozycja_menu.nazwa}")
 
-
         # Robot u celu
         if menu[6].status:
             text1 = font.render(f'Robot u celu!', True, hex_to_rgb("#F9EBC7"))
             WIN.blit(text1, (screen_width() - text1.get_rect().width - 15, 15))
             text1 = font.render(f'Dane gotowe do zapisania!', True, hex_to_rgb("#F9EBC7"))
             WIN.blit(text1, (screen_width() - text1.get_rect().width -15, 45))   
-
-        esc_text = font.render(f'Exit, press esc', True, hex_to_rgb("#F6CD44"))
-        WIN.blit(esc_text, (15, 15))
         
         if menu[0].status:
             text2 = font.render(f'[LMB] : krok 1: Pozycja robota określona', True, hex_to_rgb("#00ff00"))
@@ -297,6 +330,11 @@ def main():
         else:
             text2 = font.render(f'[2] : krok 3: Zapisywanie trasy', True, hex_to_rgb("#ff0000"))
             WIN.blit(text2, (15, 105))
+
+
+
+        esc_text = font.render(f'Exit, press esc', True, hex_to_rgb("#F6CD44"))
+        WIN.blit(esc_text, (15, 15))
 
         pygame.display.update()     
 
