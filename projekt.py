@@ -1,10 +1,8 @@
 import pygame
-import os
 import datetime
 import math
 import numpy as np
 import random
-import csv
 import json
 
 import tensorflow as tf
